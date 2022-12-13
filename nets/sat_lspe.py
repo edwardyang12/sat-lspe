@@ -7,15 +7,11 @@ import dgl
 from scipy import sparse as sp
 from scipy.sparse.linalg import norm 
 
-"""
-    GatedGCN and GatedGCN-LSPE
-    
-"""
 from layers.gatedgcn_layer import GatedGCNLayer
 from layers.gatedgcn_lspe_layer import GatedGCNLSPELayer
 from layers.mlp_readout_layer import MLPReadout
 
-class GatedGCNNet(nn.Module):
+class SATLSPENet(nn.Module):
     def __init__(self, net_params):
         super().__init__()
         num_atom_type = net_params['num_atom_type']

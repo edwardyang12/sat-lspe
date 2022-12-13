@@ -4,15 +4,16 @@
         "id": 0
     },
     
-    "model": "GatedGCN",
+    "model": "SAT",
     "dataset": "AQSOL",
     
     "out_dir": "out/delete/",
     
     "params": {
+        "workers": 0,
         "seed": 41,
         "epochs": 1000,
-        "batch_size": 128,
+        "batch_size": 64,
         "init_lr": 0.001,
         "lr_reduce_factor": 0.5,
         "lr_schedule_patience": 25,
@@ -42,7 +43,6 @@
         "gnn_type": "pna2",
         "num_heads": 8,
         "num_layers": 6,
-        "use_edge_attr": true,
         "edge_dim": 32,
         "k_hop": 3
 

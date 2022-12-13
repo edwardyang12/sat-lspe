@@ -31,7 +31,7 @@ class GraphTransformer(nn.Module):
     def __init__(self, net_params, **kwargs):
         super().__init__()
 
-        self.abs_pe = net_params['rand_walk']
+        self.abs_pe = net_params['pe_init']
         self.abs_pe_dim = net_params['pos_enc_dim']
         in_size = net_params['num_atom_type']
         d_model = net_params['hidden_dim']
@@ -40,17 +40,26 @@ class GraphTransformer(nn.Module):
         dropout = net_params['dropout']
         num_heads = net_params['num_heads']
         num_layers = net_params['num_layers']
-        batch_norm = True 
         gnn_type = net_params['gnn_type']
-        use_edge_attr = net_params['use_edge_attr']
         num_edge_features = net_params['num_bond_type']
         edge_dim = net_params['edge_dim']
         k_hop = net_params['k_hop']
         se = net_params['se']
         global_pool = net_params['readout']
+        deg = net_params['deg']
 
-        if abs_pe and abs_pe_dim > 0:
-            self.embedding_abs_pe = nn.Linear(abs_pe_dim, d_model)
+        kwargs['deg'] = deg
+        kwargs['edge_dim'] = edge_dim
+
+        in_embed = True
+        edge_embed=True
+        batch_norm = True 
+        use_global_pool = True
+        use_edge_attr= True
+        max_seq_len = None
+
+        if self.abs_pe and self.abs_pe_dim > 0:
+            self.embedding_abs_pe = nn.Linear(self.abs_pe_dim, d_model)
         if in_embed:
             if isinstance(in_size, int):
                 self.embedding = nn.Embedding(in_size, d_model) 
@@ -104,8 +113,10 @@ class GraphTransformer(nn.Module):
             for i in range(max_seq_len):
                 self.classifier.append(nn.Linear(d_model, num_class))
 
-    def forward(self, graphs, x, pos_enc, e, snorm_n, edges, deg, complete, ptr, return_attn=False):
-        edge_index, edge_attr = edges, e
+    def forward(self, graphs, x, pos_enc, e, snorm_n, edges, deg, complete, ptr, \
+        batch, return_attn=False):
+        edge_index = edges 
+        edge_attr = e
         
         if self.se == "khopgnn":
             # not yet implemented
@@ -151,13 +162,13 @@ class GraphTransformer(nn.Module):
         )
         # readout step
         if self.use_global_pool:
-            output = self.pooling(output)
+            output = self.pooling(output, batch)
         if self.max_seq_len is not None:
             pred_list = []
             for i in range(self.max_seq_len):
                 pred_list.append(self.classifier[i](output))
             return pred_list
-        return self.classifier(output)
+        return self.classifier(output), None
 
     def loss(self, scores, targets):
         

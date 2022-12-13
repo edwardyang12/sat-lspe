@@ -71,6 +71,8 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
             pickle.dump(dataset, outp, pickle.HIGHEST_PROTOCOL)
     
     trainset, valset, testset = dataset.train, dataset.val, dataset.test
+    net_params['deg'] = torch.cat([data[0].in_degrees() for data in trainset])
+    net_params['total_param'] = view_model_param(MODEL_NAME, net_params)
         
     root_log_dir, root_ckpt_dir, write_file_name, write_config_file, viz_dir = dirs
     device = net_params['device']
@@ -108,10 +110,10 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
     epoch_train_losses, epoch_val_losses = [], []
     epoch_train_MAEs, epoch_val_MAEs = [], [] 
 
-    train_loader = DataLoader(trainset, num_workers=4, batch_size=params['batch_size'], shuffle=True)
-    val_loader = DataLoader(valset, num_workers=4, batch_size=params['batch_size'], shuffle=False)
-    test_loader = DataLoader(testset, num_workers=4, batch_size=params['batch_size'], shuffle=False)
-    
+    train_loader = DataLoader(trainset, num_workers=params['workers'], batch_size=params['batch_size'], shuffle=True, collate_fn=dataset.collate)
+    val_loader = DataLoader(valset, num_workers=params['workers'], batch_size=params['batch_size'], shuffle=False, collate_fn=dataset.collate)
+    test_loader = DataLoader(testset, num_workers=params['workers'], batch_size=params['batch_size'], shuffle=False, collate_fn=dataset.collate)
+    net_params['deg'] = None
     # At any point you can hit Ctrl + C to break out of training early.
     try:
         with tqdm(range(params['epochs'])) as t:
@@ -121,10 +123,10 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
 
                 start = time.time()
 
-                epoch_train_loss, epoch_train_mae, optimizer = train_epoch(model, optimizer, device, train_loader, epoch)
+                epoch_train_loss, epoch_train_mae, optimizer = train_epoch(model, optimizer, device, train_loader, epoch, MODEL_NAME)
                     
-                epoch_val_loss, epoch_val_mae, __ = evaluate_network(model, device, val_loader, epoch)
-                epoch_test_loss, epoch_test_mae, __ = evaluate_network(model, device, test_loader, epoch)
+                epoch_val_loss, epoch_val_mae, __ = evaluate_network(model, device, val_loader, epoch, MODEL_NAME)
+                epoch_test_loss, epoch_test_mae, __ = evaluate_network(model, device, test_loader, epoch, MODEL_NAME)
                 del __
                 
                 epoch_train_losses.append(epoch_train_loss)
@@ -177,8 +179,8 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
         print('-' * 89)
         print('Exiting from training early because of KeyboardInterrupt')
     
-    test_loss_lapeig, test_mae, g_outs_test = evaluate_network(model, device, test_loader, epoch)
-    train_loss_lapeig, train_mae, g_outs_train = evaluate_network(model, device, train_loader, epoch)
+    test_loss_lapeig, test_mae, g_outs_test = evaluate_network(model, device, test_loader, epoch, MODEL_NAME)
+    train_loss_lapeig, train_mae, g_outs_train = evaluate_network(model, device, train_loader, epoch, MODEL_NAME)
     
     print("Test MAE: {:.4f}".format(test_mae))
     print("Train MAE: {:.4f}".format(train_mae))
@@ -187,7 +189,7 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
     print("AVG TIME PER EPOCH: {:.4f}s".format(np.mean(per_epoch_time)))
     
     
-    if net_params['pe_init'] == 'rand_walk':
+    if net_params['pe_init'] == 'rand_walk' and MODEL_NAME != 'SAT':
         # Visualize actual and predicted/learned eigenvecs
         from utils.plot_util import plot_graph_eigvec
         if not os.path.exists(viz_dir):
@@ -257,7 +259,8 @@ def main():
     parser.add_argument('--min_lr', help="Please give a value for min_lr")
     parser.add_argument('--weight_decay', help="Please give a value for weight_decay")
     parser.add_argument('--print_epoch_interval', help="Please give a value for print_epoch_interval")    
-    
+    parser.add_argument('--workers', help="Workers")
+
     parser.add_argument('--L', help="Please give a value for L")
     parser.add_argument('--hidden_dim', help="Please give a value for hidden_dim")
     parser.add_argument('--out_dim', help="Please give a value for out_dim")
@@ -279,7 +282,6 @@ def main():
     parser.add_argument('--gnn_type', help="Please give a value for gnn_type")
     parser.add_argument('--num_heads', help="Please give a value for num_heads")
     parser.add_argument('--num_layers', help="Please give a value for num_layers")
-    parser.add_argument('--use_edge_attr', help="Please give a value for use_edge_attr")
     parser.add_argument('--edge_dim', help="Please give a value for edge_dim")
     parser.add_argument('--k_hop', help="Please give a value for k_hop")
     args = parser.parse_args()
@@ -327,6 +329,10 @@ def main():
         params['print_epoch_interval'] = int(args.print_epoch_interval)
     if args.max_time is not None:
         params['max_time'] = float(args.max_time)
+    if args.workers is not None:
+        params['workers'] = int(args.workers)
+    else:
+        params['workers'] = 0
     # network parameters
     net_params = config['net_params']
     net_params['device'] = device
@@ -371,8 +377,6 @@ def main():
         net_params['num_heads'] = args.num_heads
     if args.num_layers is not None:
         net_params['num_layers'] = args.num_layers
-    if args.use_edge_attr is not None:
-        net_params['use_edge_attr'] = args.use_edge_attr
     if args.edge_dim is not None:
         net_params['edge_dim'] = args.edge_dim
     if args.k_hop is not None:
@@ -395,7 +399,6 @@ def main():
     if not os.path.exists(out_dir + 'configs'):
         os.makedirs(out_dir + 'configs')
 
-    net_params['total_param'] = view_model_param(MODEL_NAME, net_params)
     train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs)
 
 if __name__ == "__main__": 
