@@ -10,16 +10,34 @@ from scipy.sparse.linalg import norm
 from layers.gatedgcn_layer import GatedGCNLayer
 from layers.gatedgcn_lspe_layer import GatedGCNLSPELayer
 from layers.mlp_readout_layer import MLPReadout
+import torch_geometric.nn as gnn
+from layers.transformer_layer import TransformerEncoderLayer
+from einops import repeat
+from nets.transformer import GraphTransformerEncoder
 
 class SATLSPENet(nn.Module):
-    def __init__(self, net_params):
+    def __init__(self, net_params, **kwargs):
         super().__init__()
+
         num_atom_type = net_params['num_atom_type']
         num_bond_type = net_params['num_bond_type']
         hidden_dim = net_params['hidden_dim']
         out_dim = net_params['out_dim']
         in_feat_dropout = net_params['in_feat_dropout']
         dropout = net_params['dropout']
+        num_heads = net_params['num_heads']
+        num_layers = net_params['num_layers']
+        gnn_type = net_params['gnn_type']
+        k_hop = net_params['k_hop']
+        se = net_params['se']
+        deg = net_params['deg']
+
+        batch_norm = True 
+
+        kwargs['k_hop'] = k_hop
+        kwargs['deg'] = deg
+        kwargs['edge_dim'] = hidden_dim
+
         self.n_layers = net_params['L']
         self.readout = net_params['readout']
         self.batch_norm = net_params['batch_norm']
@@ -27,87 +45,77 @@ class SATLSPENet(nn.Module):
         self.edge_feat = net_params['edge_feat']
         self.device = net_params['device']
         self.pe_init = net_params['pe_init']
-        
         self.use_lapeig_loss = net_params['use_lapeig_loss']
         self.lambda_loss = net_params['lambda_loss']
         self.alpha_loss = net_params['alpha_loss']
-        
         self.pos_enc_dim = net_params['pos_enc_dim']
+        self.gnn_type = gnn_type
+        self.se = se
         
-        if self.pe_init in ['rand_walk', 'lap_pe']:
-            self.embedding_p = nn.Linear(self.pos_enc_dim, hidden_dim)
-
-        self.embedding_h = nn.Embedding(num_atom_type, hidden_dim)
-
-        if self.edge_feat:
-            self.embedding_e = nn.Embedding(num_bond_type, hidden_dim)
-        else:
-            self.embedding_e = nn.Linear(1, hidden_dim)
-        
+        self.embedding_p = nn.Linear(self.pos_enc_dim, hidden_dim) # self.embedding_abs_pe
+        self.embedding_h = nn.Embedding(num_atom_type, hidden_dim) # self.embedding
+        self.embedding_e = nn.Embedding(num_bond_type, hidden_dim) # self.embedding_edge
         self.in_feat_dropout = nn.Dropout(in_feat_dropout)
         
-        if self.pe_init == 'rand_walk':
-            # LSPE
-            self.layers = nn.ModuleList([ GatedGCNLSPELayer(hidden_dim, hidden_dim, dropout,
-                                                        self.batch_norm, residual=self.residual) for _ in range(self.n_layers-1) ]) 
-            self.layers.append(GatedGCNLSPELayer(hidden_dim, out_dim, dropout, self.batch_norm, residual=self.residual))
-        else: 
-            # NoPE or LapPE
-            self.layers = nn.ModuleList([ GatedGCNLayer(hidden_dim, hidden_dim, dropout,
-                                                        self.batch_norm, residual=self.residual, graph_norm=False) for _ in range(self.n_layers-1) ]) 
-            self.layers.append(GatedGCNLayer(hidden_dim, out_dim, dropout, self.batch_norm, residual=self.residual, graph_norm=False))
-        
+        # LSPE
+        self.layers = nn.ModuleList([ GatedGCNLSPELayer(hidden_dim, hidden_dim, dropout,
+                                                    self.batch_norm, residual=self.residual) for _ in range(self.n_layers-1) ]) 
+        self.layers.append(GatedGCNLSPELayer(hidden_dim, out_dim, dropout, self.batch_norm, residual=self.residual))
+       
         self.MLP_layer = MLPReadout(out_dim, 1)   # 1 out dim since regression problem        
 
-        if self.pe_init == 'rand_walk':
-            self.p_out = nn.Linear(out_dim, self.pos_enc_dim)
-            self.Whp = nn.Linear(out_dim+self.pos_enc_dim, out_dim)
+        self.p_out = nn.Linear(out_dim, self.pos_enc_dim)
+        self.Whp = nn.Linear(out_dim+self.pos_enc_dim, out_dim)
         
         self.g = None              # For util; To be accessed in loss() function
+
+        encoder_layer = TransformerEncoderLayer(
+            hidden_dim, num_heads, hidden_dim*2, dropout, batch_norm=batch_norm,
+            gnn_type=gnn_type, se=se, **kwargs)
+        self.encoder = GraphTransformerEncoder(encoder_layer, num_layers)
 
     def forward(self, graphs, x, pos_enc, e, snorm_n, edges, deg, complete, ptr, batch):   
 
         g = graphs 
         h = x 
         p = pos_enc
+
+        subgraph_node_index = None
+        subgraph_edge_index = None
+        subgraph_indicator_index = None
+        subgraph_edge_attr = None
+
         # input embedding
         h = self.embedding_h(h)
         h = self.in_feat_dropout(h)
-        # print("========================h0===============")
-        # print(h)
         
-        if self.pe_init in ['rand_walk', 'lap_pe']:
-            p = self.embedding_p(p) 
-            
-        if self.pe_init == 'lap_pe':
-            h = h + p
-            p = None
-
-        # print("========================p1===============")
-        # print(p)
-        
-        # print("========================e1===============")
-        # print(e)
-        if not self.edge_feat: # edge feature set to 1
-            e = torch.ones(e.size(0),1).to(self.device)
+        p = self.embedding_p(p) 
         e = self.embedding_e(e)   
-        # print("========================e2===============")
-        # print(e)
         
         
         # convnets
         for conv in self.layers:
             h, p, e = conv(g, h, p, e, snorm_n)
-            
+        
+        h = self.encoder(
+            h, 
+            edges, 
+            complete,
+            edge_attr=e, 
+            degree=deg,
+            subgraph_node_index=subgraph_node_index,
+            subgraph_edge_index=subgraph_edge_index,
+            subgraph_indicator_index=subgraph_indicator_index, 
+            subgraph_edge_attr=subgraph_edge_attr,
+            ptr=ptr,
+            return_attn=False
+        )
+
         g.ndata['h'] = h
-        # print("========================h1===============")
-        # print(g.ndata['h'])
         
         if self.pe_init == 'rand_walk':
             
             p = self.p_out(p)
-            # print("========================p2.5===============")
-            # print(p)
             g.ndata['p'] = p
 
             # Implementing p_g = p_g / torch.norm(p_g, p=2, dim=0)
@@ -121,36 +129,15 @@ class SATLSPENet(nn.Module):
 
             batch_wise_p_means = means.repeat_interleave(g.batch_num_nodes(), 0)
             p = p - batch_wise_p_means
-            # print("========================p2===============")
-            # print(p)
             
-            # c = torch.full_like(p, fill_value=float(0))
-            # mask = (batch_wise_p_l2_norms != 0)
-            # c[mask] = torch.clamp(p[mask] / batch_wise_p_l2_norms[mask], -1e2, 1e2)
-            # g.ndata['p'] = c
             g.ndata['p'] = p / batch_wise_p_l2_norms
-            # print("========================p3===============")
-            # print(c)
         
             # Concat h and p
-            # print("========================h2===============")
-            # print(g.ndata['h'])
-            # print("========================p4===============")
-            # print(g.ndata['p'])
             hp = self.Whp(torch.cat((g.ndata['h'],g.ndata['p']),dim=-1))
             g.ndata['h'] = hp
         
-        # readout
-        if self.readout == "sum":
-            hg = dgl.sum_nodes(g, 'h')
-        elif self.readout == "max":
-            hg = dgl.max_nodes(g, 'h')
-        elif self.readout == "mean":
-            hg = dgl.mean_nodes(g, 'h')
-        else:
-            hg = dgl.mean_nodes(g, 'h')  # default readout is mean nodes
-        # print("========================hg===============")
-        # print(hg)
+
+        hg = dgl.mean_nodes(g, 'h')
         self.g = g # For util; To be accessed in loss() function
         
         return self.MLP_layer(hg), g

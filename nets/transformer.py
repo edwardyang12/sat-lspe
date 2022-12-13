@@ -37,7 +37,7 @@ class GraphTransformer(nn.Module):
         d_model = net_params['hidden_dim']
         num_class = 1
         dim_feedforward = d_model*2
-        dropout = net_params['dropout']
+        dropout = net_params['drop_out_sat']
         num_heads = net_params['num_heads']
         num_layers = net_params['num_layers']
         gnn_type = net_params['gnn_type']
@@ -48,6 +48,7 @@ class GraphTransformer(nn.Module):
         global_pool = net_params['readout']
         deg = net_params['deg']
 
+        kwargs['k_hop'] = k_hop
         kwargs['deg'] = deg
         kwargs['edge_dim'] = edge_dim
 

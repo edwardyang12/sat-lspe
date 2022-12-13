@@ -168,6 +168,8 @@ class MoleculeDatasetDGL(torch.utils.data.Dataset):
             self.train = MoleculeDGL(name, data_dir, 'train', num_graphs=10000)
             self.val = MoleculeDGL(name, data_dir, 'val', num_graphs=1000)
             self.test = MoleculeDGL(name, data_dir, 'test', num_graphs=1000)
+
+        self.deg = torch.cat([data[0].in_degrees() for data in tqdm(self.train)])
                 
         print("Time taken: {:.4f}s".format(time.time()-t0))
         print(len(self.train))
@@ -252,7 +254,10 @@ class MoleculeDataset(torch.utils.data.Dataset):
     def collate(self, samples):
         # The input samples is a list of pairs (graph, label).
         graphs, labels = map(list, zip(*samples))
-        labels = torch.unsqueeze(torch.stack(labels),1)
+        if self.name =='AQSOL':
+            labels = torch.unsqueeze(torch.stack(labels),1)
+        else:
+            labels = torch.stack(labels)
         tab_sizes_n = [ graphs[i].number_of_nodes() for i in range(len(graphs))]
         tab_snorm_n = [ torch.FloatTensor(size,1).fill_(1./float(size)) for size in tab_sizes_n ]
         snorm_n = torch.cat(tab_snorm_n).sqrt()  
@@ -297,9 +302,9 @@ if __name__ == "__main__":
     print(test.test[0][0].edata['feat'])
     with open('ZINC.pkl', 'wb') as f:
         pickle.dump(test, f)
-    dataset = MoleculeDataset('AQSOL')
-    _, _, testset = dataset.train, dataset.val, dataset.test
-    test_loader = DataLoader(testset, num_workers=0, batch_size=4, shuffle=False, collate_fn=dataset.collate)
-    for i in test_loader:
-        print(i[0].ndata['feat'], i[0].edata['feat'], i[1])
-        break
+    # dataset = MoleculeDataset('AQSOL')
+    # _, _, testset = dataset.train, dataset.val, dataset.test
+    # test_loader = DataLoader(testset, num_workers=0, batch_size=4, shuffle=False, collate_fn=dataset.collate)
+    # for i in test_loader:
+    #     print(i[0].ndata['feat'], i[0].edata['feat'], i[1])
+    #     break

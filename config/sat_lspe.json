@@ -18,7 +18,7 @@
         "lr_reduce_factor": 0.5,
         "lr_schedule_patience": 25,
         "min_lr": 1e-6,
-        "weight_decay": 0.0,
+        "weight_decay": 1e-5,
         "print_epoch_interval": 5,
         "max_time": 12
     },
@@ -31,7 +31,7 @@
         "edge_feat": true,
         "readout": "mean",
         "in_feat_dropout": 0.0,
-        "dropout": 0.2,
+        "dropout_lspe": 0.0,
         "batch_norm": true,
         "pos_enc_dim": 20,
         "pe_init": "rand_walk",
@@ -39,6 +39,7 @@
         "alpha_loss": 1,
         "lambda_loss": 1e-1,
 
+        "drop_out_sat": 0.3,
         "se": "gnn",
         "gnn_type": "pna2",
         "num_heads": 8,

@@ -23,7 +23,7 @@ class GatedGCNNet(nn.Module):
         hidden_dim = net_params['hidden_dim']
         out_dim = net_params['out_dim']
         in_feat_dropout = net_params['in_feat_dropout']
-        dropout = net_params['dropout']
+        dropout = net_params['dropout_lspe']
         self.n_layers = net_params['L']
         self.readout = net_params['readout']
         self.batch_norm = net_params['batch_norm']

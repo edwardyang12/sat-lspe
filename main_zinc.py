@@ -53,8 +53,8 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
     per_epoch_time = []
         
     DATASET_NAME = dataset.name
-    if os.path.isfile('dataset_aqsol.pkl'):
-        with open('dataset_aqsol.pkl', 'rb') as inp:
+    if os.path.isfile('dataset_zinc.pkl'):
+        with open('dataset_zinc.pkl', 'rb') as inp:
             dataset = pickle.load(inp)
     elif net_params['pe_init'] == 'rand_walk':
         tt = time.time()
@@ -66,12 +66,12 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
         print("[!] -LSPE (For viz later): Adding lapeigvecs to key 'eigvec' for every graph.")
         dataset._add_eig_vecs(net_params['pos_enc_dim'])
         print("[!] Time taken: ", time.time()-tt)
-    if not os.path.isfile('dataset_aqsol.pkl'):
-        with open('dataset_aqsol.pkl', 'wb') as outp:
+    if not os.path.isfile('dataset_zinc.pkl'):
+        with open('dataset_zinc.pkl', 'wb') as outp:
             pickle.dump(dataset, outp, pickle.HIGHEST_PROTOCOL)
     
     trainset, valset, testset = dataset.train, dataset.val, dataset.test
-    net_params['deg'] = torch.cat([data[0].in_degrees() for data in trainset])
+    net_params['deg'] = dataset.deg # torch.cat([data[0].in_degrees() for data in trainset])
     net_params['total_param'] = view_model_param(MODEL_NAME, net_params)
         
     root_log_dir, root_ckpt_dir, write_file_name, write_config_file, viz_dir = dirs
