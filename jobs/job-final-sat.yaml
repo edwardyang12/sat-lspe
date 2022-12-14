@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: edward-sat  # Replace with something like "${USER_NAME}-{EXP_NAME}"
+  namespace: ucsd-haosulab
+spec:
+  ttlSecondsAfterFinished: 86400  # Wait one day to delete completed jobs
+  template:
+    spec:
+      containers:
+        - name: gpu-container
+          image: edwardy99/nerf
+          # imagePullPolicy: Always
+          command:
+            - "sh"
+            - "-c"
+          args:
+            - "pip install --upgrade torch torchvision torchaudio && pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv torch-geometric -f https://data.pyg.org/whl/torch-1.13.0+cu117.html && pip install einops ogb dgl && pip install dgl-cu116 dglgo -f https://data.dgl.ai/wheels/repo.html
+	    && cd /edward-slow-vol/Graphs/sat-lspe/
+            && python main_aqsol.py --config 'config/sat_lspe.json' --model SAT --batch_size 32 --workers 4 --out_dir 'out/sat/'
+      "
+          resources:
+            requests:
+              cpu: "8"
+              memory: "30Gi"
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "12"
+              memory: "40Gi"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+            - name: edward-slow-vol
+              mountPath: /edward-slow-vol
+
+      volumes:
+        - name: dshm  # shared memory, required for the multi-worker dataloader
+          emptyDir:
+            medium: Memory
+        - name: edward-slow-vol
+          persistentVolumeClaim:
+            claimName: edward-slow-vol
+
+      restartPolicy: Never
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                      - k8s-haosu-15.sdsc.optiputer.net
+                      - k8s-haosu-06.sdsc.optiputer.net
+                      - k8s-haosu-20.sdsc.optiputer.net
+                      - k8s-haosu-21.sdsc.optiputer.net
+                  - key: nautilus.io/group
+                    operator: In
+                    values:
+                      - haosu
+                  - key: nvidia.com/gpu.product
+                    operator: In
+                    values:
+                  #   - NVIDIA-GeForce-RTX-1080-Ti
+                      - NVIDIA-GeForce-RTX-2080-Ti
+  backoffLimit: 0  # The number of attempts to restart after crash
