@@ -71,7 +71,7 @@ def train_val_pipeline(MODEL_NAME, dataset, params, net_params, dirs):
             pickle.dump(dataset, outp, pickle.HIGHEST_PROTOCOL)
     
     trainset, valset, testset = dataset.train, dataset.val, dataset.test
-    net_params['deg'] = torch.cat([data[0].in_degrees() for data in trainset])
+    net_params['deg'] = dataset.deg
     net_params['total_param'] = view_model_param(MODEL_NAME, net_params)
         
     root_log_dir, root_ckpt_dir, write_file_name, write_config_file, viz_dir = dirs

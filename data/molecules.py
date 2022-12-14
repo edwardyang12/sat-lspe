@@ -246,6 +246,7 @@ class MoleculeDataset(torch.utils.data.Dataset):
             self.test = f.test
             self.num_atom_type = f.num_atom_type
             self.num_bond_type = f.num_bond_type
+            self.deg = f.deg
         print('train, test, val sizes :',len(self.train),len(self.test),len(self.val))
         print("[I] Finished loading.")
         print("[I] Data load time: {:.4f}s".format(time.time()-start))
@@ -297,10 +298,10 @@ class MoleculeDataset(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    test = MoleculeDatasetDGL('ZINC')
+    test = MoleculeDatasetDGL('AQSOL')
     print(test.test[0][0].ndata['feat'])
     print(test.test[0][0].edata['feat'])
-    with open('ZINC.pkl', 'wb') as f:
+    with open('AQSOL.pkl', 'wb') as f:
         pickle.dump(test, f)
     # dataset = MoleculeDataset('AQSOL')
     # _, _, testset = dataset.train, dataset.val, dataset.test

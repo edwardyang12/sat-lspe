@@ -24,7 +24,8 @@ class SATLSPENet(nn.Module):
         hidden_dim = net_params['hidden_dim']
         out_dim = net_params['out_dim']
         in_feat_dropout = net_params['in_feat_dropout']
-        dropout = net_params['dropout']
+        dropout_transformer = net_params['drop_out_sat']
+        dropout = net_params['dropout_lspe']
         num_heads = net_params['num_heads']
         num_layers = net_params['num_layers']
         gnn_type = net_params['gnn_type']
@@ -70,7 +71,7 @@ class SATLSPENet(nn.Module):
         self.g = None              # For util; To be accessed in loss() function
 
         encoder_layer = TransformerEncoderLayer(
-            hidden_dim, num_heads, hidden_dim*2, dropout, batch_norm=batch_norm,
+            hidden_dim, num_heads, hidden_dim*2, dropout_transformer, batch_norm=batch_norm,
             gnn_type=gnn_type, se=se, **kwargs)
         self.encoder = GraphTransformerEncoder(encoder_layer, num_layers)
 
